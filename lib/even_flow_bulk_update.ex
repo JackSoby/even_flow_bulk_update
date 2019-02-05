@@ -15,45 +15,54 @@ defmodule EvenFlowBulkUpdate do
   require IEx
 
   def evenflow_import do
-    result =
+    body =
       File.stream!("./data/evenflow-google-data.csv")
       |> CSV.decode!(headers: true)
-      |> Stream.map(fn attribute ->
-        case attribute["brand"] do
-          "Evenflo" ->
-            %{
-              id: attribute["id"],
-              link: attribute["link"]
-            }
-
-          _ ->
-            nil
-        end
+      |> Stream.chunk_every(10)
+      |> Stream.map(fn attributes ->
+        encode_and_send(attributes)
       end)
-      |> Enum.to_list()
-      |> Enum.filter(fn prod -> prod end)
-      |> Poison.encode!()
+      |> Stream.run()
+  end
 
-    token = "api_key"
+  def encode_and_send(attributes) do
+    body =
+      attributes
+      |> create_encoded_body
+
+    token = "api_url"
 
     headers = [Authorization: "Bearer #{token}", "Content-Type": "application/json"]
-
-    test_body =
-      [
-        %{
-          ID: "15311935",
-          "Product Page URL": "http://www.evenflo.com/strollers/cambridge/15311935.html"
-        }
-      ]
-      |> Poison.encode!()
 
     response =
       HTTPoison.put!(
         "https://app.salsify.com/api/v1/orgs/org_id/products",
-        test_body,
+        body,
         headers
       )
+  end
 
-    IO.inspect(response)
+  def create_encoded_body(attributes) do
+    attributes
+    |> Enum.map(fn attribute ->
+      case attribute["brand"] do
+        "Evenflo" ->
+          %{
+            ID: attribute["id"],
+            "Product Page URL": attribute["link"]
+          }
+
+        "Evenflo Gold" ->
+          %{
+            ID: attribute["id"],
+            "Product Page URL": attribute["link"]
+          }
+
+        _ ->
+          nil
+      end
+    end)
+    |> Enum.filter(fn prod -> prod end)
+    |> Poison.encode!()
   end
 end
